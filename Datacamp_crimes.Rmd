@@ -1,0 +1,229 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-10-24"
+---
+
+```{r, results=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+crimes <- suppressWarnings(read_csv("C:/Users/nici_/Downloads/crimes.csv"))
+head(crimes)
+```
+
+```{r, results=FALSE, message=FALSE, warning=FALSE, include=TRUE}
+library(tidyverse) 
+library(dplyr)
+
+#Filter all with no missings
+crimes2 <- crimes |> rename("descent" = "Vict Descent")
+crimes2 <- crimes2 |> rename("sex" = "Vict Sex")
+crimes2 <- crimes2 |> rename("age" = "Vict Age")
+crimes2 <- crimes2 |> rename("area" = "AREA NAME")
+crimes2 <- crimes2 |> rename("premis" = "Premis Desc")
+
+#crime category
+crimes2 <- crimes2 |> rename("crm" = "Crm Cd")
+
+crimes2 <- crimes2 |> filter(!is.na(descent))
+crimes2 <- crimes2 |> filter(!is.na(sex))
+
+crimes2 <- crimes2 |> 
+ filter(descent %in% c("A", "B", "C", "D", "F", "G", "H", "I", "J", "K", "L", "O", "P", "S", "U", "V", "W", "X", "Z"))
+
+crimes2 <- crimes2 |> 
+ filter(sex %in% c("F", "M"))
+
+crimes2 <- crimes2 |> 
+ filter(age >= 0)
+```
+
+## Grouped Crime Categories
+
+- 1 Homicide: Code 110, 113 
+- 2 Rape: Code 121, 122, 815, 820, 821 
+- 3 Robbery: Code 210, 220
+- 4 Aggressive assaults: Code 230, 231, 235, 236, 250, 251, 761, 926
+- 5 Simple assault: Code 435, 436, 437, 622, 623, 624, 625, 626, 627, 647, 763, 928, 930 
+- 6 Bulgary: Code 310, 320
+
+```{r, results=FALSE, message=FALSE, warning=FALSE, include=TRUE}
+library(mgcv)
+
+crimes2$sex <- as.factor(crimes2$sex)
+crimes2$descent <- as.factor(crimes2$descent)
+crimes2$area <- as.factor(crimes2$area)
+crimes2$premis <- as.factor(crimes2$premis)
+
+
+#group for crime
+crimes2 <- crimes2 |> 
+  dplyr::mutate(serious = case_when(crm %in% c("110", "113") ~ "1", #homicide
+                                    crm %in% c("121", "122", "815", "820", "821") ~ "2", #rape
+                                    crm %in% c("210", "220") ~ "3", #robbery
+                                    crm %in% c("230", "231", "235", "236", "250", "251", "761", "926") ~ "4", #aggassaults
+                                    crm %in% c("435", "436", "437", "622", "623", "624", "625", "626", "627", "647", "763", "928", "930") ~ "5", #sassault
+                                    crm %in% c("310", "320") ~ "6", TRUE ~ "0")) #bulgary
+
+crimes2 <- crimes2 |> filter(serious != "0")
+crimes2$serious <- as.factor(crimes2$serious)
+
+
+#class Victims in age groups
+crimes2 <- crimes2 |> mutate(age20 = case_when(age>=0 & age<=18 ~ "minor", TRUE ~ "adult"))
+
+crimes2$age20 <- as.factor(crimes2$age20)
+```
+
+The victims descent will be grouped into broader descent categories:
+
+Asian:
+C - Chinese
+J - Japanese
+K - Korean
+L - Laotian
+V - Vietnamese
+Z - Asian Indian
+A - Other Asian
+
+Black:
+B - Black
+
+Native American/Alaskan Native:
+I - American Indian/Alaskan Native
+
+Pacific Islander:
+G - Guamanian
+P - Pacific Islander
+S - Samoan
+U - Hawaiian
+
+Hispanic/Latin/Mexican:
+H - Hispanic/Latin/Mexican
+
+White:
+W - White
+
+Other:
+D - Cambodian
+F - Filipino
+O - Other
+X - Unknown
+
+This grouping should make it easier to analyze and understand the data based on these broader categories.
+
+```{r, results=FALSE, message=FALSE, warning=FALSE, include=TRUE}
+#group victims origin into broader groups
+crimes2 <- crimes2 |> 
+ mutate(descent_g = case_when(descent %in% c("A", "C","J", "K", "L", "V", "Z") ~ "Asian", 
+descent == "B" ~ "Black", 
+descent == "I" ~ "Native American",
+descent %in% c("G", "P", "S", "U") ~ "Pacific Islander", 
+descent == "H" ~ "Hispanic", 
+descent == "W" ~ "White", 
+TRUE ~ "Other"))
+
+crimes2$descent_g <- as.factor(crimes2$descent_g)
+```
+
+```{r, results=FALSE, message=FALSE, warning=FALSE, include=TRUE}
+#turn dates into season
+library(hydroTSM)
+
+crimes2$seasons <- time2season(as.Date(crimes2$`Date Rptd`),                # Convert dates to seasons
+                          out.fmt = "seasons")
+
+crimes2 <- crimes2 |> filter(!is.na(seasons))
+
+```
+
+```{r, results=TRUE, message=FALSE, warning=FALSE, include=TRUE}
+library(caret)
+library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
+
+
+#partition data frame into training and testing sets
+#set labels
+crimes2$serious <- set_labels(crimes2$serious, labels = c("Homicide", "Rape", "Robbery", "Aggressive Assaults", "Simple Assault", "Bulgary"))
+train_indices <- createDataPartition(crimes2$serious, times=1, p=.8, list=FALSE)
+
+#create training set
+df_train <- crimes2[train_indices , ]
+
+#create testing set
+df_test  <- crimes2[-train_indices, ]
+
+
+#multinominal logistic Regression for category of the commited crime
+model <- nnet::multinom(serious ~ age + sex:descent_g + seasons + area, data=df_train, MaxNWts=100000)
+
+model_list <- as.list(model)
+tab_model(model_list, p.style = "numeric_stars"))
+```
+
+```{r, results=TRUE, message=FALSE, warning=FALSE, include=TRUE}
+#plot log odds
+library(ggthemes)
+library(nnet)
+library(ggeffects)
+
+gen <- ggpredict(model, terms = "seasons")
+plot(gen, facet = TRUE, colors = "metro")
+
+min <- ggpredict(model, terms = "age")
+plot(min, facet = TRUE, colors = "metro")
+
+des <- ggpredict(model, terms = "sex:descent_g")
+plot(des, facet = TRUE, colors = "metro") 
+```
+
+```{r, results=TRUE, message=FALSE, warning=FALSE, include=TRUE}
+#prediction
+predict <- predict(model, new.data = df_test)
+predict_df <- as.data.frame(predict)
+predict_df <- set_labels(predict_df, labels = c("Homicide", "Rape", "Robbery", "Aggressive Assaults", "Simple Assault", "Bulgary"))
+
+#summary
+view_df(predict_df, show.frq = T, show.prc = T)
+view_df(df_test, show.frq = T, show.prc = T)
+
+```
+
+# Geo-Cluster
+```{r, results=TRUE, message=FALSE, warning=FALSE, include=TRUE}
+library(maps)
+library(tidyverse)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+
+crimes_map <- crimes2 |> filter(!is.na(LON) & LON !=0)
+crimes_map <- crimes_map |> filter(!is.na(LAT) & LAT !=0)
+
+crimes_map <- crimes2 |> filter(!is.na(LON) & LON !=0)
+crimes_map <- crimes_map |> filter(!is.na(LAT) & LAT !=0)
+
+#filter Simple assault
+
+homicide <- crimes_map |> filter(serious == 1)
+# Get long and lat from data.frame for map
+
+lon <- c(homicide$LON)
+lat <- c(homicide$LAT)
+df <- as.data.frame(cbind(lon,lat))
+
+sites <- data.frame(longitude = -118.243683, latitude = 34.052235)
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+class(world)
+
+
+#Map Homicide
+base_map <- ggplot(data= world, width = 50, height = 36) +
+    geom_sf() +
+    geom_point(data = df, aes(x = lon, y = lat), size = 2, alpha = .15,  
+        shape = 23, fill = "darkred") +
+    coord_sf(xlim=c(-118.0, -118.7), ylim = c(33.7, 34.35),, expand = TRUE) + theme_classic()
+
+```
