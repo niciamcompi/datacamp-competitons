@@ -4,6 +4,10 @@ output: html_document
 date: "2023-10-24"
 ---
 
+They have provided you with a single dataset to use. A summary and preview is provided below.
+The data is publicly available here: (https://data.lacity.org/Public-Safety/Crime-Data-from-2020-to-Present/2nrs-mtv8)
+👮‍♀️ crimes.csv
+
 ```{r, results=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 library(tidyverse)
 crimes <- suppressWarnings(read_csv("C:/Users/nici_/Downloads/crimes.csv"))
