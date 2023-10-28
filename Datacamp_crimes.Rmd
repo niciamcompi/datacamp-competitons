@@ -133,7 +133,7 @@ crimes2$descent_g <- as.factor(crimes2$descent_g)
 #turn dates into season
 library(hydroTSM)
 
-crimes2$seasons <- time2season(as.Date(crimes2$`Date Rptd`),                # Convert dates to seasons
+crimes2$seasons <- time2season(as.Date(crimes2$`Date Rptd`), # Convert dates to seasons
                           out.fmt = "seasons")
 
 crimes2 <- crimes2 |> filter(!is.na(seasons))
@@ -163,7 +163,7 @@ df_test  <- crimes2[-train_indices, ]
 model <- nnet::multinom(serious ~ age + sex:descent_g + seasons + area, data=df_train, MaxNWts=100000)
 
 model_list <- as.list(model)
-tab_model(model_list, p.style = "numeric_stars"))
+tab_model(model_list, p.style = "numeric_stars")
 ```
 
 ```{r, results=TRUE, message=FALSE, warning=FALSE, include=TRUE}
